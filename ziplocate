@@ -1,0 +1,44 @@
+#!/usr/bin/env node
+var program = require('commander');
+    req = require('request');
+
+var SERVER = "http://ziplocate.us/api/v1/";
+
+function inbody(b){
+    if (program.verbose)
+        console.log("<"+b)
+}
+
+function outbody(b){
+    if (program.verbose)
+        console.log(">"+b)
+}
+
+program.version('0.0.1')
+  .option('-v --verbose', 'verbose')
+
+
+program.command('ll').description('show lat long of a zip code')
+  .option('-z --zip [zip code]', 'The zip code to describe')
+  .action(function(cmd){
+     if (!cmd.zip) { 
+         console.error("No zip code specified");
+         return;
+     }
+     req.get({
+        headers: {'content-type' : 'application/json'},
+        url:     SERVER+cmd.zip
+        },function(e,r,b){
+        inbody(b)
+        if (!e && r.statusCode==200){
+            var o = JSON.parse(b);
+            console.log("latitude : "+o.lat);
+            console.log("longitude: "+o.lng);
+        } else {
+            console.error("not found");
+            process.exit(1);
+        }
+    });
+  });
+
+program.parse(process.argv)
