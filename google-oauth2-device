@@ -1,0 +1,123 @@
+#!/usr/bin/env node
+var config,
+    fs = require('fs'),
+    uuid = require('node-uuid'),
+    http=require('http'),
+    moment = require('moment'),
+    program = require('commander'),
+    req = require('request'),
+    sprintf = require('sprintf'),
+
+    configFile=process.env['HOME']+"/.google-oauth2-device";
+
+try {
+  config = JSON.parse(fs.readFileSync(configFile));
+} catch (err) {
+  config = {
+  }
+  save();
+};
+
+function save(){
+  fs.writeFile(configFile, JSON.stringify(config, null, 2), function(err) {
+    if(err) { console.error(err); }
+  });
+}
+
+function inbody(b){
+    if (program.verbose)
+        console.log("<"+b)
+}
+
+function outbody(b){
+    if (program.verbose)
+        console.log(">"+b)
+}
+
+program.version('0.0.1')
+  .option('-v --verbose', 'verbose')
+
+program.command('load-client-secret').description('load the client secret from a downloaded json file')
+    .option('-p --path [path]', 'path to client secret')
+    .action(function(cmd){
+        if (!cmd.path) {
+            console.error("No path specified");
+            process.exit(1);
+        }
+        fs.readFile(cmd.path, 'utf8', function (err, data) {
+            if (err) {
+                console.log('Error: ' + err);
+                process.exit(1);
+            }
+            o = JSON.parse(data);
+            console.dir(o);
+            config.client_secret = o;
+            save();
+        });
+    });
+
+program.command('get-code').description('get the authentication user code')
+  .action(function(cmd){ 
+     req.post({
+        url:     "https://accounts.google.com/o/oauth2/device/code",
+        form:{
+            'client_id' : config.client_secret.installed.client_id,
+            'scope'     : 'profile email'
+        }
+        },function(e,r,b){
+        inbody(b)
+        if (e || r.statusCode!=200){
+            if (e) {
+                console.error("error: "+e);
+            } else {
+                console.error("error: "+r.statusCode);
+            }
+            process.exit(1);
+        } else {
+            var o = JSON.parse(b);
+            if (!o.verification_url){
+                console.error("error: "+b);
+                process.exit(1);
+            } else {
+                console.log("please visit: "+ o.verification_url);
+                console.log("enter   code: "+ o.user_code);
+                config.device_code = o;
+                save();
+            }
+        }
+    });
+  });
+
+program.command('get-access').description('get the access token')
+  .action(function(cmd){ 
+     req.post({
+        url:     "https://accounts.google.com/o/oauth2/token",
+        form:    {
+            'client_id'     : config.client_secret.installed.client_id,
+            'client_secret' : config.client_secret.installed.client_secret,
+            'code'          : config.device_code.device_code,
+            'grant_type'    : 'http://oauth.net/grant_type/device/1.0'
+        }
+        },function(e,r,b){
+        inbody(b)
+        if (e || r.statusCode!=200){
+            if (e) {
+                console.error("error: "+e);
+            } else {
+                console.error("error: "+r.statusCode);
+            }
+            process.exit(1);
+        } else {
+            var o = JSON.parse(b);
+            if (o.error){
+                console.error("error: "+o.error);
+                process.exit(1);
+            } else {
+                config.access = o;
+                save();
+            }
+        }
+    });
+  });
+
+program.parse(process.argv)
